@@ -1,15 +1,17 @@
-from flask import Flask, render_template, request, redirect, url_for, session
-from werkzeug.security import generate_password_hash, check_password_hash
-from functools import wraps
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 import sqlite3
 import os
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.environ.get("SECRET_KEY", "defaultsecret")  # Render env var
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "expenses.db")
+
 
 def init_db():
     conn = sqlite3.connect(db_path)
@@ -28,12 +30,12 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             amount REAL NOT NULL,
             category TEXT NOT NULL,
             type TEXT NOT NULL,
             date TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
@@ -41,7 +43,8 @@ def init_db():
     conn.commit()
     conn.close()
 
-init_db()
+
+init_db() 
 
 
 def login_required(f):
@@ -53,53 +56,6 @@ def login_required(f):
     return decorated_function
 
 
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
-        hashed_pw = generate_password_hash(password)
-
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        try:
-            cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed_pw))
-            conn.commit()
-        except sqlite3.IntegrityError:
-            conn.close()
-            return "Username already exists!"
-        conn.close()
-        return redirect(url_for("login"))
-    return render_template("register.html")
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
-
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username=?", (username,))
-        user = cursor.fetchone()
-        conn.close()
-
-        if user and check_password_hash(user["password"], password):
-            session["user_id"] = user["id"]
-            session["username"] = user["username"]
-            return redirect(url_for("index"))
-        else:
-            return "Invalid username or password!"
-    return render_template("login.html")
-
-
-@app.route("/logout")
-@login_required
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
 
 
 @app.route("/")
@@ -122,11 +78,18 @@ def index():
 
     cursor.execute("""
         SELECT SUM(amount) FROM expenses
-        WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now') AND user_id=?
+        WHERE user_id=? AND strftime('%Y-%m', date) = strftime('%Y-%m', 'now')
     """, (user_id,))
     monthly_total = cursor.fetchone()[0] or 0
 
-   
+    
+    cursor.execute("SELECT SUM(amount) FROM expenses WHERE user_id=? AND type='Income'", (user_id,))
+    income_total = cursor.fetchone()[0] or 0
+
+    cursor.execute("SELECT SUM(amount) FROM expenses WHERE user_id=? AND type='Expense'", (user_id,))
+    expense_total = cursor.fetchone()[0] or 0
+
+    
     cursor.execute("""
         SELECT category, SUM(amount)
         FROM expenses
@@ -138,15 +101,15 @@ def index():
     amounts = [row[1] for row in category_data] if category_data else []
 
     conn.close()
-    return render_template(
-        "index.html",
-        expenses=expenses,
-        total=total,
-        entries=entries,
-        monthly_total=monthly_total,
-        categories=categories,
-        amounts=amounts
-    )
+
+    return render_template("index.html",
+                           expenses=expenses,
+                           total=total,
+                           entries=entries,
+                           monthly_total=monthly_total,
+                           categories=categories,
+                           amounts=amounts)
+
 
 
 @app.route("/add", methods=["POST"])
@@ -156,30 +119,22 @@ def add():
     title = request.form["title"]
     amount = float(request.form["amount"])
     category = request.form["category"]
-    type_value = request.form["type"]
+    type_ = request.form["type"]
     date = request.form["date"]
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO expenses (title, amount, category, type, date, user_id) VALUES (?, ?, ?, ?, ?, ?)",
-        (title, amount, category, type_value, date, user_id)
-    )
+    cursor.execute("""
+        INSERT INTO expenses (user_id, title, amount, category, type, date)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (user_id, title, amount, category, type_, date))
     conn.commit()
     conn.close()
+
+    flash("Added successfully!", "success")
     return redirect(url_for("index"))
 
 
-@app.route("/delete/<int:id>")
-@login_required
-def delete(id):
-    user_id = session["user_id"]
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM expenses WHERE id=? AND user_id=?", (id, user_id))
-    conn.commit()
-    conn.close()
-    return redirect(url_for("index"))
 
 @app.route("/edit/<int:id>", methods=["GET", "POST"])
 @login_required
@@ -192,19 +147,19 @@ def edit(id):
         title = request.form["title"]
         amount = float(request.form["amount"])
         category = request.form["category"]
-        type_value = request.form["type"]
+        type_ = request.form["type"]
         date = request.form["date"]
 
         cursor.execute("""
             UPDATE expenses
             SET title=?, amount=?, category=?, type=?, date=?
             WHERE id=? AND user_id=?
-        """, (title, amount, category, type_value, date, id, user_id))
+        """, (title, amount, category, type_, date, id, user_id))
         conn.commit()
         conn.close()
+        flash("Updated successfully!", "success")
         return redirect(url_for("index"))
 
-    
     cursor.execute("SELECT * FROM expenses WHERE id=? AND user_id=?", (id, user_id))
     expense = cursor.fetchone()
     conn.close()
@@ -212,6 +167,75 @@ def edit(id):
 
 
 
+@app.route("/delete/<int:id>")
+@login_required
+def delete(id):
+    user_id = session["user_id"]
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM expenses WHERE id=? AND user_id=?", (id, user_id))
+    conn.commit()
+    conn.close()
+    flash("Deleted successfully!", "success")
+    return redirect(url_for("index"))
+
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        hashed_password = generate_password_hash(password)
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed_password))
+            conn.commit()
+            flash("Registration successful! Please log in.", "success")
+            return redirect(url_for("login"))
+        except sqlite3.IntegrityError:
+            flash("Username already exists!", "error")
+        finally:
+            conn.close()
+
+    return render_template("register.html")
+
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username=?", (username,))
+        user = cursor.fetchone()
+        conn.close()
+
+        if user and check_password_hash(user[2], password):
+            session["user_id"] = user[0]
+            session["username"] = user[1]
+            flash("Logged in successfully!", "success")
+            return redirect(url_for("index"))
+        else:
+            flash("Invalid credentials!", "error")
+
+    return render_template("login.html")
+
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    session.clear()
+    flash("Logged out successfully!", "success")
+    return redirect(url_for("login"))
+
+
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
