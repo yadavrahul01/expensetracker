@@ -14,7 +14,7 @@ def init_db():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Users table
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,7 +23,7 @@ def init_db():
         )
     """)
 
-    # Expenses table
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +51,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ------------------- ROUTES -------------------
+
 
 @app.route("/")
 @login_required
