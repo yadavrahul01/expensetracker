@@ -7,9 +7,7 @@ import os
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
-# -------------------------------
-# DATABASE CONFIG
-# -------------------------------
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "expenses.db")
 
@@ -17,7 +15,7 @@ def init_db():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Users table
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,7 +24,7 @@ def init_db():
         )
     """)
 
-    # Expenses table
+    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,9 +43,7 @@ def init_db():
 
 init_db()
 
-# -------------------------------
-# LOGIN REQUIRED DECORATOR
-# -------------------------------
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -56,9 +52,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# -------------------------------
-# REGISTER ROUTE
-# -------------------------------
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -78,9 +72,7 @@ def register():
         return redirect(url_for("login"))
     return render_template("register.html")
 
-# -------------------------------
-# LOGIN ROUTE
-# -------------------------------
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -102,18 +94,14 @@ def login():
             return "Invalid username or password!"
     return render_template("login.html")
 
-# -------------------------------
-# LOGOUT ROUTE
-# -------------------------------
+
 @app.route("/logout")
 @login_required
 def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# -------------------------------
-# DASHBOARD ROUTE
-# -------------------------------
+
 @app.route("/")
 @login_required
 def index():
@@ -121,11 +109,11 @@ def index():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Fetch user expenses
+    
     cursor.execute("SELECT * FROM expenses WHERE user_id=? ORDER BY id DESC", (user_id,))
     expenses = cursor.fetchall()
 
-    # Totals
+    
     cursor.execute("SELECT SUM(amount) FROM expenses WHERE user_id=?", (user_id,))
     total = cursor.fetchone()[0] or 0
 
@@ -138,7 +126,7 @@ def index():
     """, (user_id,))
     monthly_total = cursor.fetchone()[0] or 0
 
-    # Category chart data
+   
     cursor.execute("""
         SELECT category, SUM(amount)
         FROM expenses
@@ -160,9 +148,7 @@ def index():
         amounts=amounts
     )
 
-# -------------------------------
-# ADD EXPENSE ROUTE
-# -------------------------------
+
 @app.route("/add", methods=["POST"])
 @login_required
 def add():
@@ -183,9 +169,7 @@ def add():
     conn.close()
     return redirect(url_for("index"))
 
-# -------------------------------
-# DELETE EXPENSE ROUTE
-# -------------------------------
+
 @app.route("/delete/<int:id>")
 @login_required
 def delete(id):
@@ -197,9 +181,6 @@ def delete(id):
     conn.close()
     return redirect(url_for("index"))
 
-# -------------------------------
-# EDIT EXPENSE ROUTE
-# -------------------------------
 @app.route("/edit/<int:id>", methods=["GET", "POST"])
 @login_required
 def edit(id):
@@ -223,14 +204,14 @@ def edit(id):
         conn.close()
         return redirect(url_for("index"))
 
-    # GET request
+    
     cursor.execute("SELECT * FROM expenses WHERE id=? AND user_id=?", (id, user_id))
     expense = cursor.fetchone()
     conn.close()
     return render_template("edit.html", expense=expense)
 
-# -------------------------------
-# RUN APP
-# -------------------------------
+
+
+
 if __name__ == "__main__":
     app.run(debug=True)

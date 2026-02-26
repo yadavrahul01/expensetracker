@@ -31,7 +31,7 @@
     <option value="Bills">Bills</option>
     <option value="Entertainment">Entertainment</option>
     <option value="Other">Other</option>
-    <!-- Add more categories here if needed -->
+    
 </select>
 
 <select name="type" required>
@@ -76,7 +76,7 @@
 document.addEventListener("DOMContentLoaded", function () {
     const ctx = document.getElementById("expenseChart").getContext("2d");
 
-    // Use JSON.stringify to ensure the arrays are valid JavaScript
+    
     const categories = JSON.parse('{{ categories | tojson | safe }}');
     const amounts = JSON.parse('{{ amounts | tojson | safe }}');
 
